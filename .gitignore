@@ -1,0 +1,20 @@
+# Models (large binary files, downloaded separately)
+models/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test audio files
+*.wav
+*.mp3
+*.ogg
+*.flac
+
+# Logs
+*.log

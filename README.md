@@ -1,133 +1,99 @@
-# WhisperServer
+# WhisperServer (One-Click Wrapper)
 
-A self-hosted speech-to-text system running on your Mac, powered by [whisper.cpp](https://github.com/ggerganov/whisper.cpp). Designed as a local alternative to cloud-based transcription services like Wispr Flow — your voice data never leaves your network.
+This repository is intentionally lightweight.
 
-Open a web page on your phone, hold a button to talk, and get transcribed text back. Inference runs on the Apple Silicon GPU via Metal.
+It does **not** reimplement the Wispr/`whisper.cpp` server. The server already exists and already knows how to run and listen for requests.
 
-## Prerequisites
+The only purpose of this repo is convenience: make local setup on a Mac as close to one-click as possible, so an Android client can send audio to your laptop and get transcription back.
 
-- macOS with Apple Silicon (M1+)
-- [Homebrew](https://brew.sh)
+## Upstream and Client Repos
 
-Install dependencies:
+- `whisper.cpp` (upstream server/project): https://github.com/ggerganov/whisper.cpp
+- Android client used with this server: https://github.com/nihal111/WhisperClientAndroid
+
+## What This Repo Is
+
+- A thin shell around the existing `whisper-server` binary (from `whisper.cpp` / Homebrew)
+- A simple model download helper
+- A small local web test UI
+- Startup scripts for quick local bring-up
+
+## Intended Workflow
+
+1. Run the server on your Mac.
+2. Put your Android phone and Mac on the same Tailscale VPN.
+3. Android app sends audio to the Mac server.
+4. Mac transcribes locally and returns text.
+
+This gives you a local speech-to-text engine on your laptop that your phone can use, without sending voice to third-party cloud transcription services.
+
+## Quick Start (One-Click Setup)
+
+### 1. Install dependencies
 
 ```bash
 brew install whisper-cpp ffmpeg
 ```
 
-## Setup
-
-### 1. Download a Model
-
-Download a Whisper GGML model into the `models/` directory:
+### 2. Download model (one command)
 
 ```bash
-mkdir -p models
-
-# Recommended: Large V3 Turbo (1.5GB) — best speed/quality balance
-curl -L -o models/ggml-large-v3-turbo.bin \
-  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+./download-model.sh
 ```
 
-Other model options (from [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main)):
+Optional models:
 
-| Model | Size | Speed | Quality | Best For |
-|-------|------|-------|---------|----------|
-| `ggml-base.en.bin` | 142MB | Fastest | Good | Quick English-only use |
-| `ggml-small.bin` | 466MB | Fast | Better | Multilingual, low latency |
-| `ggml-large-v3-turbo.bin` | 1.5GB | Medium | Great | **Recommended default** |
-| `ggml-large-v3-q5_0.bin` | 1.1GB | Slow | Best | Maximum accuracy |
+```bash
+./download-model.sh base.en
+./download-model.sh small
+./download-model.sh large-v3-q5_0
+```
 
-### 2. Start the Server
+### 3. Start transcription server
 
 ```bash
 ./start.sh
 ```
 
-This starts the whisper.cpp inference server on `0.0.0.0:8080`. Custom model or port:
-
-```bash
-./start.sh models/ggml-base.en.bin 9090
-```
-
-### 3. Start the Web UI
+### 4. (Optional) Start web UI for quick testing
 
 ```bash
 ./serve-web.sh
 ```
 
-This serves the web interface over HTTPS on port 3000. A self-signed TLS certificate is generated automatically on first run (required for browser microphone access over the network).
+## Android + Tailscale Notes
 
-Custom port:
+- Keep the Mac running `./start.sh`
+- Connect both Mac and Android device to the same Tailscale network
+- Point Android requests to the Mac's Tailscale IP on port `8080`
+- Use `POST /inference` with multipart form audio upload
 
-```bash
-./serve-web.sh 4000
-```
-
-### 4. Use It
-
-1. Open `https://<your-mac-ip>:3000` on your phone (the IP is printed when you run `serve-web.sh`)
-2. Accept the self-signed certificate warning in your browser
-3. Grant microphone permission when prompted
-4. **Hold the button** to record, **release** to transcribe
-5. Tap any transcription to copy it to your clipboard
-
-### 5. Test via CLI
+Example:
 
 ```bash
-./test.sh
-```
-
-Sends a test audio file to the server and prints the transcription. Uses the most recent [Handy](https://github.com/cjpais/Handy) recording if available, or place a `test.wav` in the project directory.
-
-## API
-
-### `POST /inference`
-
-Transcribe an audio file. Accepts any audio format (converted to WAV server-side via ffmpeg).
-
-```bash
-curl http://<your-mac-ip>:8080/inference \
+curl http://<mac-tailscale-ip>:8080/inference \
   -F "file=@recording.wav" \
   -F "temperature=0.0" \
   -F "response_format=json"
 ```
 
-Response:
+## Model Files and Git
 
-```json
-{
-  "text": "The transcribed text appears here."
-}
+Model binaries are intentionally not tracked by Git.
+
+- Ignored path: `models/`
+- This keeps large model files out of the repository
+
+You can verify tracked model files with:
+
+```bash
+git ls-files models
 ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `file` | file | required | Audio file (WAV, MP3, OGG, WebM, etc.) |
-| `temperature` | float | `0.0` | Sampling temperature (0.0 = greedy) |
-| `temperature_inc` | float | `0.2` | Temperature increment on fallback |
-| `response_format` | string | `json` | `json`, `text`, `verbose_json`, `vtt`, or `srt` |
+Expected output: empty.
 
-## Architecture
+## Repository Scope
 
-```
-┌──────────────┐       HTTPS        ┌──────────────────┐       HTTP        ┌──────────────────┐
-│ Phone/Browser │ ── hold to talk ─► │  serve-web.sh     │ ── /inference ──► │  whisper-server   │
-│ (mic capture) │ ◄── text ────────  │  (HTTPS :3000)    │ ◄── JSON ───────  │  (Metal GPU :8080)│
-└──────────────┘                    └──────────────────┘                   └──────────────────┘
-```
+This project is deliberately minimal and convenience-focused.
 
-## Performance
-
-Benchmarked on Apple M4 with `ggml-large-v3-turbo.bin`:
-
-- ~17 seconds of audio transcribed in ~5 seconds (~3x faster than real-time)
-- Model stays resident in GPU memory between requests
-
-## Roadmap
-
-- [ ] Android client app with floating overlay widget for voice recording
-- [ ] `launchd` plist for running as a persistent background service
-- [ ] Audio compression (Opus/OGG) on the client to reduce upload size
-- [ ] Streaming transcription for lower perceived latency
-- [ ] mDNS/Bonjour for automatic server discovery on the local network
+If you need deeper server behavior changes, that belongs in upstream Wispr/`whisper.cpp` server code. This repo is just the local one-click wrapper around that existing server.

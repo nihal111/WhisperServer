@@ -16,5 +16,8 @@ models/
 *.ogg
 *.flac
 
+# TLS certificates
+certs/
+
 # Logs
 *.log

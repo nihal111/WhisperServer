@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WhisperServer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: #888;
+            margin-bottom: 2rem;
+            letter-spacing: 0.05em;
+        }
+
+        #record-btn {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 3px solid #333;
+            background: #1a1a1a;
+            color: #ccc;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #record-btn:active, #record-btn.recording {
+            background: #b91c1c;
+            border-color: #dc2626;
+            color: white;
+            transform: scale(1.08);
+        }
+
+        #record-btn.processing {
+            background: #1a1a1a;
+            border-color: #f59e0b;
+            color: #f59e0b;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #status {
+            margin-top: 1.5rem;
+            font-size: 0.85rem;
+            color: #666;
+            height: 1.2em;
+        }
+
+        #result {
+            margin-top: 2rem;
+            width: 100%;
+            max-width: 600px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+        }
+
+        .transcription {
+            background: #141414;
+            border: 1px solid #222;
+            border-radius: 12px;
+            padding: 1rem 1.2rem;
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #e0e0e0;
+            word-wrap: break-word;
+        }
+
+        .transcription .meta {
+            font-size: 0.75rem;
+            color: #555;
+            margin-top: 0.5rem;
+        }
+
+        .error {
+            border-color: #7f1d1d;
+            color: #fca5a5;
+        }
+
+        .copy-hint {
+            font-size: 0.75rem;
+            color: #444;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>WHISPERSERVER</h1>
+
+    <button id="record-btn">Hold to talk</button>
+    <div id="status"></div>
+
+    <div id="result"></div>
+
+    <script>
+        const btn = document.getElementById('record-btn');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+
+        // Whisper-server endpoint — same host, port 8080
+        const WHISPER_URL = `/inference`;
+
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let stream = null;
+        let recordingTimer = null;
+        let startTime = 0;
+
+        async function initMic() {
+            if (stream) return true;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                return true;
+            } catch (e) {
+                status.textContent = 'Microphone access denied';
+                return false;
+            }
+        }
+
+        async function startRecording() {
+            if (!(await initMic())) return;
+
+            audioChunks = [];
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendAudio(blob);
+            };
+
+            mediaRecorder.start(100);
+            startTime = Date.now();
+            btn.classList.add('recording');
+            btn.textContent = 'Recording...';
+            updateTimer();
+        }
+
+        function updateTimer() {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            status.textContent = `${elapsed}s`;
+            if (btn.classList.contains('recording')) {
+                recordingTimer = requestAnimationFrame(updateTimer);
+            }
+        }
+
+        function stopRecording() {
+            if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+            cancelAnimationFrame(recordingTimer);
+            mediaRecorder.stop();
+            btn.classList.remove('recording');
+            btn.classList.add('processing');
+            btn.textContent = 'Processing';
+            status.textContent = 'Transcribing...';
+        }
+
+        async function sendAudio(blob) {
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+            const formData = new FormData();
+            formData.append('file', blob, 'recording.webm');
+            formData.append('temperature', '0.0');
+            formData.append('temperature_inc', '0.2');
+            formData.append('response_format', 'json');
+
+            try {
+                const t0 = performance.now();
+                const resp = await fetch(WHISPER_URL, { method: 'POST', body: formData });
+
+                if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+
+                const data = await resp.json();
+                const latency = ((performance.now() - t0) / 1000).toFixed(1);
+                const text = (data.text || '').trim();
+
+                if (text) {
+                    const div = document.createElement('div');
+                    div.className = 'transcription';
+                    div.innerHTML = `${text}<div class="meta">${duration}s audio &rarr; ${latency}s</div>`;
+                    div.addEventListener('click', () => {
+                        navigator.clipboard.writeText(text);
+                        status.textContent = 'Copied!';
+                        setTimeout(() => status.textContent = '', 1500);
+                    });
+                    result.prepend(div);
+                } else {
+                    status.textContent = 'No speech detected';
+                }
+            } catch (e) {
+                const div = document.createElement('div');
+                div.className = 'transcription error';
+                div.textContent = e.message;
+                result.prepend(div);
+                status.textContent = '';
+            }
+
+            btn.classList.remove('processing');
+            btn.textContent = 'Hold to talk';
+            status.textContent = status.textContent || '';
+        }
+
+        // Hold-to-record: works with both mouse and touch
+        btn.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording(); });
+        btn.addEventListener('mouseup', stopRecording);
+        btn.addEventListener('mouseleave', stopRecording);
+
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); }, { passive: false });
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+        btn.addEventListener('touchcancel', stopRecording);
+    </script>
+</body>
+</html>

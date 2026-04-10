@@ -2,32 +2,35 @@
 
 This repository is intentionally lightweight.
 
-It does **not** reimplement the Wispr/`whisper.cpp` server. The server already exists and already knows how to run and listen for requests.
-
-The only purpose of this repo is convenience: make local setup on a Mac as close to one-click as possible, so an Android client can send audio to your laptop and get transcription back.
+It does not reimplement Wispr/`whisper.cpp` server logic. It is a convenience shell to make setup on Mac one-click and keep a local transcription stack running for an Android client.
 
 ## Upstream and Client Repos
 
-- `whisper.cpp` (upstream server/project): https://github.com/ggerganov/whisper.cpp
-- Android client used with this server: https://github.com/nihal111/WhisperClientAndroid
+- `whisper.cpp` (upstream): https://github.com/ggerganov/whisper.cpp
+- Android client for this server: https://github.com/nihal111/WhisperClientAndroid
 
-## What This Repo Is
+## Core Semantics: Port 3000 vs 8080
 
-- A thin shell around the existing `whisper-server` binary (from `whisper.cpp` / Homebrew)
-- A simple model download helper
-- A small local web test UI
-- Startup scripts for quick local bring-up
+There are two different services and both are important.
 
-## Intended Workflow
+| Port | Service | Protocol | Purpose |
+|---|---|---|---|
+| `8080` | `whisper-server` | HTTP | Raw transcription API (`POST /inference`) |
+| `3000` | `serve-web.sh` (`web/server.py`) | HTTPS | Web/proxy layer that forwards `POST /inference` to `http://127.0.0.1:8080` |
 
-1. Run the server on your Mac.
-2. Put your Android phone and Mac on the same Tailscale VPN.
-3. Android app sends audio to the Mac server.
-4. Mac transcribes locally and returns text.
+### Endpoint behavior
 
-This gives you a local speech-to-text engine on your laptop that your phone can use, without sending voice to third-party cloud transcription services.
+- `http://<host>:8080/` -> Whisper server landing page
+- `http://<host>:8080/inference` -> **POST only** for transcription
+- `https://<host>:3000/` -> Web UI landing page
+- `https://<host>:3000/inference` -> Proxy endpoint, **POST only**
 
-## Quick Start (One-Click Setup)
+Important:
+- Port `3000` is TLS (`https://`) only.
+- Port `8080` is plain HTTP (`http://`) only.
+- A `GET` to `/inference` returns `404`; this is expected.
+
+## Quick Setup
 
 ### 1. Install dependencies
 
@@ -35,13 +38,13 @@ This gives you a local speech-to-text engine on your laptop that your phone can 
 brew install whisper-cpp ffmpeg
 ```
 
-### 2. Download model (one command)
+### 2. Download model
 
 ```bash
 ./download-model.sh
 ```
 
-Optional models:
+Optional:
 
 ```bash
 ./download-model.sh base.en
@@ -49,42 +52,61 @@ Optional models:
 ./download-model.sh large-v3-q5_0
 ```
 
-### 3. Start transcription server
+### 3. Start everything in background (recommended)
+
+```bash
+./install-all-bg.sh
+```
+
+This installs and starts both launch agents:
+- `com.nihal.whisperserver` (API on `8080`)
+- `com.nihal.whisperserver.web` (HTTPS web/proxy on `3000`)
+
+### 4. Check status
+
+```bash
+./status.sh
+```
+
+### 5. Stop everything
+
+```bash
+./uninstall-all-bg.sh
+```
+
+## Tailscale + Android Usage
+
+Connect your Mac and phone to the same Tailscale network.
+
+You can use either integration style:
+
+1. Android app calls raw API directly:
+- Base URL: `http://<mac-tailscale-ip>:8080`
+- Transcribe: `POST /inference` multipart form
+
+2. Android app calls HTTPS proxy:
+- Base URL: `https://<mac-tailscale-ip>:3000`
+- Transcribe: `POST /inference` multipart form
+- Good when the client expects TLS on device networks
+
+`serve-web.sh` automatically generates a self-signed cert and includes LAN + Tailscale IPs in SAN.
+
+## Local Foreground Mode (manual)
+
+Use this only for direct debugging.
 
 ```bash
 ./start.sh
-```
-
-### 4. (Optional) Start web UI for quick testing
-
-```bash
 ./serve-web.sh
-```
-
-## Android + Tailscale Notes
-
-- Keep the Mac running `./start.sh`
-- Connect both Mac and Android device to the same Tailscale network
-- Point Android requests to the Mac's Tailscale IP on port `8080`
-- Use `POST /inference` with multipart form audio upload
-
-Example:
-
-```bash
-curl http://<mac-tailscale-ip>:8080/inference \
-  -F "file=@recording.wav" \
-  -F "temperature=0.0" \
-  -F "response_format=json"
 ```
 
 ## Model Files and Git
 
-Model binaries are intentionally not tracked by Git.
+Model binaries are intentionally not tracked by git.
 
 - Ignored path: `models/`
-- This keeps large model files out of the repository
 
-You can verify tracked model files with:
+Verify:
 
 ```bash
 git ls-files models
@@ -92,8 +114,8 @@ git ls-files models
 
 Expected output: empty.
 
-## Repository Scope
+## Project Scope
 
 This project is deliberately minimal and convenience-focused.
 
-If you need deeper server behavior changes, that belongs in upstream Wispr/`whisper.cpp` server code. This repo is just the local one-click wrapper around that existing server.
+If you need deeper server behavior changes, those belong in upstream Wispr/`whisper.cpp` server code.

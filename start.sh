@@ -8,6 +8,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL="${1:-$SCRIPT_DIR/models/ggml-large-v3-turbo.bin}"
 PORT="${2:-8080}"
+WHISPER_SERVER_BIN="${WHISPER_SERVER_BIN:-$(command -v whisper-server || true)}"
 
 if [ ! -f "$MODEL" ]; then
     echo "Error: Model not found at $MODEL"
@@ -15,11 +16,17 @@ if [ ! -f "$MODEL" ]; then
     exit 1
 fi
 
+if [ -z "$WHISPER_SERVER_BIN" ]; then
+    echo "Error: whisper-server not found in PATH."
+    echo "Install with: brew install whisper-cpp"
+    exit 1
+fi
+
 echo "Starting WhisperServer on port $PORT with model: $(basename "$MODEL")"
 echo "API endpoint: http://$(ipconfig getifaddr en0):$PORT/inference"
 echo ""
 
-exec whisper-server \
+exec "$WHISPER_SERVER_BIN" \
     --model "$MODEL" \
     --host 0.0.0.0 \
     --port "$PORT" \

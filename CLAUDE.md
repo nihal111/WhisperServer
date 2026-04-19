@@ -33,6 +33,10 @@ The proxy on `3000` forwards transcription requests to `127.0.0.1:8080`.
 - `com.nihal.whisperserver`
 - `com.nihal.whisperserver.web`
 
+## Background Mode
+
+The preferred background install uses system `LaunchDaemons`, not user `LaunchAgents`, so the services survive logout.
+
 ## Doc Update Policy
 
 When updating docs/scripts, keep `3000` and `8080` semantics explicit and consistent everywhere.

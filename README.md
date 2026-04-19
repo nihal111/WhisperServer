@@ -58,9 +58,11 @@ Optional:
 ./install-all-bg.sh
 ```
 
-This installs and starts both launch agents:
+This installs and starts both launch daemons:
 - `com.nihal.whisperserver` (API on `8080`)
 - `com.nihal.whisperserver.web` (HTTPS web/proxy on `3000`)
+
+Because they run as system daemons, they keep running after you log out.
 
 ### 4. Check status
 

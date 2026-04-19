@@ -21,3 +21,6 @@ certs/
 
 # Logs
 *.log
+
+# Runtime PIDs
+data/*.pid

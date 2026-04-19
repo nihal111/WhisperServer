@@ -38,10 +38,15 @@ Use:
 
 Avoid relying on foreground-only runs except for debugging.
 
-## LaunchAgent Labels
+## Service Labels
 
 - API: `com.nihal.whisperserver`
 - Web: `com.nihal.whisperserver.web`
+
+## Background Runtime
+
+The recommended install path uses system `LaunchDaemons` so the services survive GUI logout.
+Legacy `LaunchAgents` may still exist on older installs, but new installs should use the daemon path.
 
 ## TLS/SAN Requirement for 3000
 

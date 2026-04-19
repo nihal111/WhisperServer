@@ -3,13 +3,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LABEL="com.nihal.whisperserver.web"
-PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
+PLIST_DIR="/Library/LaunchDaemons"
+PLIST_PATH="${PLIST_DIR}/${LABEL}.plist"
 LOG_DIR="$SCRIPT_DIR/data"
 PORT="${1:-3000}"
+RUN_AS_USER="${RUN_AS_USER:-$(id -un)}"
+RUN_AS_GROUP="${RUN_AS_GROUP:-$(id -gn)}"
 
-mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
+mkdir -p "$LOG_DIR"
 
-cat > "$PLIST_PATH" <<PLIST
+TMP_PLIST="$(mktemp /tmp/${LABEL}.XXXXXX.plist)"
+trap 'rm -f "$TMP_PLIST"' EXIT
+cat > "$TMP_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -33,6 +38,13 @@ cat > "$PLIST_PATH" <<PLIST
   <key>WorkingDirectory</key>
   <string>${SCRIPT_DIR}</string>
 
+  <key>UserName</key>
+  <string>${RUN_AS_USER}</string>
+  <key>GroupName</key>
+  <string>${RUN_AS_GROUP}</string>
+  <key>InitGroups</key>
+  <true/>
+
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -46,10 +58,12 @@ cat > "$PLIST_PATH" <<PLIST
 </plist>
 PLIST
 
-launchctl bootout "gui/$(id -u)/${LABEL}" >/dev/null 2>&1 || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
-launchctl enable "gui/$(id -u)/${LABEL}"
-launchctl kickstart -k "gui/$(id -u)/${LABEL}"
+sudo install -o root -g wheel -m 644 "$TMP_PLIST" "$PLIST_PATH"
 
-echo "Installed and started LaunchAgent: ${LABEL}"
+sudo launchctl bootout system "$PLIST_PATH" >/dev/null 2>&1 || true
+sudo launchctl bootstrap system "$PLIST_PATH"
+sudo launchctl enable system/"${LABEL}"
+sudo launchctl kickstart -k system/"${LABEL}"
+
+echo "Installed and started LaunchDaemon: ${LABEL}"
 echo "Plist: ${PLIST_PATH}"

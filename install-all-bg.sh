@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Installs and starts both background launch agents:
+# Installs and starts both background launch daemons:
 # - API server on 8080
 # - HTTPS web proxy on 3000
 #

@@ -2,10 +2,14 @@
 set -euo pipefail
 
 LABEL="com.nihal.whisperserver"
-PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
+SYSTEM_PLIST="/Library/LaunchDaemons/${LABEL}.plist"
+USER_PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 
+sudo launchctl bootout system/"${LABEL}" >/dev/null 2>&1 || true
+sudo launchctl disable system/"${LABEL}" >/dev/null 2>&1 || true
 launchctl bootout "gui/$(id -u)/${LABEL}" >/dev/null 2>&1 || true
 launchctl disable "gui/$(id -u)/${LABEL}" >/dev/null 2>&1 || true
-rm -f "$PLIST_PATH"
+sudo rm -f "$SYSTEM_PLIST"
+rm -f "$USER_PLIST"
 
-echo "Removed LaunchAgent: ${LABEL}"
+echo "Removed Whisper API launch service: ${LABEL}"
